@@ -15,7 +15,8 @@ typedef struct {
 } Router;
 typedef enum{
     PARAM_INT,
-    PARAM_STRING
+    PARAM_STRING,
+    PARAM_UNKNOWN
 }ParamType;
 typedef struct {
     char name[32];
