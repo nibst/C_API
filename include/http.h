@@ -11,11 +11,21 @@ typedef struct {
     StringView body;
 }HttpRequest;
 
+typedef struct {
+    int code;
+    const char *name;
+} HttpStatus;
+
 enum Method {
     GET, POST, PUT, DELETE
 };
 
 enum Method method_from_str(StringView method);
-char* http_response(int status, const char* message);
+/*
+ * First if first parameter is NULL, we use default template, which have Connection as keep-alive
+ */
+char* http_response(const char* response_template, int status, const char* message);
+char *http_close_response(int status, const char *message);
 char* http_ok();
 char* http_not_found();
+const char *http_status_name(int code);

@@ -12,6 +12,6 @@ typedef struct{
 // Returns -1 on error (max buffer capacity exceeded) and 0 on success
 int buffsock_init(BuffSock *bs, int socket, size_t capacity);
 ssize_t buffsock_read(BuffSock *bs);
-void buffsock_free(BuffSock *bs);
+void buffsock_destroy(BuffSock *bs);
 /* Clears the buffer, doesnt clear the socket file descriptor */
 void buffsock_clear(BuffSock *bs);

@@ -25,7 +25,7 @@ ssize_t buffsock_read(BuffSock *bs){
     bs->buf[bs->len] = '\0';
     return bytes_read;
 }
-void buffsock_free(BuffSock *bs){
+void buffsock_destroy(BuffSock *bs){
     bs->socket = -1;
     free(bs->buf);
     bs->capacity = 0;

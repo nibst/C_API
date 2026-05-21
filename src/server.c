@@ -15,37 +15,39 @@
 #include "stringview.h"
 #include "http.h"
 #include "router.h"
+#include "db.h"
 
 #define PORT "8080"
 #define BACKLOG 10
 #define BUF_SIZE 4096
 #define REQUEST_LIMIT 1<<20 // 1mb
-enum {
-    IOError = -1,
-    ParseError = -2,
-    RequestIsTooLongError = -3
-};
+typedef enum {
+    PARSE_CLIENT_CLOSED = -1,
+    PARSE_SOCKET_ERROR  = -2,
+    PARSE_BAD_REQUEST   = -3,
+    PARSE_TOO_LARGE     = -4
+} ParseResult;
 
 int read_body(BuffSock *bs, size_t content_length, size_t request_length){
     int body_received = bs->len - request_length;
     ssize_t rret;
     if (content_length + request_length > REQUEST_LIMIT ){
-        return RequestIsTooLongError;
+        return PARSE_TOO_LARGE;
     }
     printf("content-length %zu\n", content_length );
     while (body_received < content_length){
         printf("body received: %d\n", body_received);
         // if its buffer is more than half completed
         if (body_received > bs->capacity/2){
-            bs->capacity*= 2;
-            printf("realloc: buf=%p, new capacity=%zu\n", bs->buf, bs->capacity);
-            char *new_buf = realloc(bs->buf, bs->capacity);
+            size_t new_capacity = bs->capacity * 2;
+            printf("realloc: buf=%p, new capacity=%zu\n", bs->buf, new_capacity);
+            char *new_buf = realloc(bs->buf,new_capacity);
             if (!new_buf) { 
                 perror("realloc error");
                 break; 
             }
             bs->buf = new_buf;
-
+            bs->capacity = new_capacity;
         }
         rret = buffsock_read(bs);
         body_received += rret;
@@ -65,9 +67,9 @@ void log_request(int pret, HttpRequest request){
 }
 int get_content_length(struct phr_header *headers, size_t num_headers){
     int content_len = 0;
-    for (int i = 0; i != num_headers; ++i) {
+    for (int i = 0; i < num_headers; i++) {
         //headers.name is not null terminated thats why we need len
-        if (strncmp(headers[i].name, "Content-Length", headers[i].name_len) == 0){
+        if (strncmp(headers[i].name, "Content-Length", headers[i].name_len) == 0 && (headers[i].name_len > 0)){
             content_len = atoi(headers[i].value);
         }
     }
@@ -100,9 +102,13 @@ int parse_request(BuffSock *buffsock, HttpRequest* request){
         prevbuflen = buffsock->len;
         //read socket into buffer
         rret = buffsock_read(buffsock);
-        if (rret <= 0){
-            buffsock_free(buffsock);
-            return IOError;
+        if (rret == 0){
+            printf("Connection closed by client\n");
+            return 0;
+        }
+        if (rret < 0){
+            perror("Error reading socket");
+            return PARSE_SOCKET_ERROR;
         }
         /* parse the request */
         pret = phr_parse_request(buffsock->buf, buffsock->len, &(request->method.data), &(request->method.len), 
@@ -112,15 +118,13 @@ int parse_request(BuffSock *buffsock, HttpRequest* request){
         if (pret > 0)
             break; /* successfully parsed the request */
         else if (pret == -1){
-            buffsock_free(buffsock);
-            return ParseError;
+            return PARSE_BAD_REQUEST;
         }
         /* request is incomplete, continue the loop */
         assert(pret == -2);
         if (buffsock->len == BUF_SIZE){
-            perror("TOO LONG");
-            buffsock_free(buffsock);
-            return RequestIsTooLongError;
+            perror("Request is too long");
+            return PARSE_TOO_LARGE;
         }
     }
     
@@ -133,9 +137,19 @@ void* handle_connection(void *arg){
     free(arg); // free heap allocation yay
     BuffSock buffsock;
     buffsock_init(&buffsock, connected_sock, BUF_SIZE);
-    HttpRequest request;
+    HttpRequest request = {0};//we need to zero initialize this because headers needed to be zeroed
+                              //TODO we should initialize this somewhere else
+    Router router;
+    router_init(&router);
     while(1){
         int bytes = parse_request(&buffsock,&request);
+        //if any error or connection was closed by client (bytes == 0) -> close tcp connection
+        if (bytes < 0){    
+            char * response = http_close_response(400,"Some fucking error idk");
+            send(connected_sock, response, strlen(response), 0);
+            free(response);
+            break;
+        }
         int content_len = get_content_length(request.headers, request.num_headers);
         size_t buf_size = read_body(&buffsock,content_len, bytes);
         StringView body = {
@@ -143,23 +157,19 @@ void* handle_connection(void *arg){
             .len = buf_size
         }; 
         request.body = body;  
-        route(&request, &buffsock);
+        route(router, &request, &buffsock);
         printf("body: %.*s\n", (int)request.body.len,(request.body.data));
-        char *response = "HTTP/1.1 200 OK\r\n"
-            "Content-Length: 13\r\n"
-            "Connection: keep-alive\r\n"
-            "\r\n"
-            "Hello World!\n";
-
-        send(connected_sock, response, strlen(response), 0);
         buffsock_clear(&buffsock);
     }
-    buffsock_free(&buffsock);
+    close(connected_sock); 
+    router_destroy(&router);
+    buffsock_destroy(&buffsock);
     return NULL;
 }
 int main(){
     // Accept connection from anywhere
     // on port 8080
+    db = init_jokes_db();
     struct addrinfo hints; 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
@@ -178,7 +188,6 @@ int main(){
     }
     int yes=1;
     //char yes='1'; // Solaris people use this
-
     // lose the pesky "Address already in use" error message
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
     // bind socket to my port
@@ -188,7 +197,6 @@ int main(){
     }
     listen(sockfd,BACKLOG);
     struct sockaddr_storage client_addr;
-
     socklen_t addr_size = sizeof client_addr;
     while(1){
 

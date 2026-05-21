@@ -1,7 +1,7 @@
 CC = gcc
-CFLAGS = -Wall -Ilib/picohttpparser -Ilib/yyjson/ -Iinclude
-
+CFLAGS = -Wall -Ilib/picohttpparser -Ilib/yyjson/ -Ilib/bcrypt -Iinclude
+LIBS = lib/bcrypt/bcrypt.a -lsqlite3
 SRC = $(wildcard src/*.c) lib/picohttpparser/picohttpparser.c lib/yyjson/yyjson.c
 
 myserver: $(SRC)
-	$(CC) $(CFLAGS) $(SRC) -o ./bin/myserver
+	$(CC) $(CFLAGS) $(SRC) $(LIBS) -o ./bin/myserver
