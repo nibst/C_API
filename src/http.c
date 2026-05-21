@@ -113,7 +113,7 @@ char* http_response(const char* response_template, int status, const char* messa
         return NULL;
     }
 
-    snprintf(response, response_len + 1, response_template, status, message, content_len, json);
+    snprintf(response, response_len + 1, response_template, status, http_status_name(status), content_len, json);
 
     free(json);
 
