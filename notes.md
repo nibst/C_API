@@ -16,6 +16,7 @@ Example:
 - [ ] Implement closing TCP by inactive time
 - [ ] Close on "Connection: close"
 - [ ] for safety change strlens for strnlens (it sets max len)
+This can be done just for client requests. I trust strlen of internal server things
 ## Archive
 
 - [x] need to implement resizable buffer for reading socket.
