@@ -27,10 +27,11 @@ int router_add_route(Router *router, Route route){
 }
 void router_init(Router *router){
     router->capacity = INIT_CAPACITY;
-    router->num_route = 0;
     router->routes = malloc(sizeof(Route) * router->capacity);
+    router->num_route = 0;
     router_add_route(router, (Route){POST, "/login", handle_login});
     router_add_route(router, (Route){GET, "/joke", handle_get_joke});
+    router_add_route(router, (Route){GET, "/joke/<int:id>", handle_get_joke});
 }
 
 void route(Router router, HttpRequest *request, BuffSock *bs) {
@@ -39,11 +40,8 @@ void route(Router router, HttpRequest *request, BuffSock *bs) {
     for (int i = 0; i < router.num_route; i++) {
         printf("request path: %.*s\n",(int) request->path.len, request->path.data);
         printf("route path: %s\n", router.routes[i].path);
-        route_match(string_init(router.routes[i].path),request->path);
-        if (strlen(router.routes[i].path) != request->path.len){
-            continue;
-        }
-        if (router.routes[i].method == method && strncmp(router.routes[i].path, request->path.data, request->path.len) == 0) {
+        if (router.routes[i].method == method && route_match(string_init(router.routes[i].path),request->path) == 0) {
+            printf("handling...\n");
             router.routes[i].handler(request, bs);
             return;
         }
@@ -63,6 +61,7 @@ void router_destroy(Router* router){
     }
     free(router->routes);
 }
+//return a true value if is integer, falsy value if not
 int is_integer(const char *s) {
     if (*s == '\0') {
         return 0;
@@ -80,12 +79,26 @@ int is_integer(const char *s) {
  * request_paramater will be something like "4"
  */
 RouteParam parse_route_param(char* param_definition, char *request_paramater){
-
     RouteParam param = {0};
-    char *name = "id";
-    memcpy(param.name,name, strnlen(name,64));
-    param.type = PARAM_INT;
-    param.value.i = atoi(request_paramater);
+    char *saveptr, *saveptr2;
+    char* tok = strtok_r(param_definition,">",&saveptr);
+    tok = strtok_r(tok,"<",&saveptr);
+    char* type = strtok_r(tok,":", &saveptr2);
+    printf("type: %s\n", type);
+    if (strcmp("int", type) == 0){
+        param.type = PARAM_INT;
+        param.value.i = atoi(request_paramater);
+    }
+    else if(strcmp("str",type) == 0){
+        param.type = PARAM_STRING;
+        snprintf(param.value.s, sizeof(param.value.s), "%s", request_paramater);
+    }
+    else{
+        param.type = PARAM_UNKNOWN;
+    }
+    char *name = strtok_r(NULL,":",&saveptr2);
+    printf("name: %s\n",name);
+    snprintf(param.name, sizeof(param.name), "%s", name);
     return param;
 
 }
@@ -107,18 +120,44 @@ int route_match(StringView route_path, StringView request_path){
     char *route_saveptr, *req_saveptr;
     char* route_tok = strtok_r(route,"/",&route_saveptr);
     char* request_tok = strtok_r(request,"/",&req_saveptr);
-    fprintf(stderr,"route tok: %s\n", route_tok);
-    fprintf(stderr,"req tok: %s\n", request_tok);
+    RouteParam param;
     while(route_tok && request_tok){
+    fprintf(stderr,"route tok: %s\n", route_tok);
+    fprintf(stderr,"req tok: %s,\n", request_tok);
         if (route_tok[0] == '<'){
-             parse_route_param(route_tok, request_tok);
+            fprintf(stderr,"here\n");
+            param = parse_route_param(route_tok, request_tok);
+            //if param type is int but req tok is not integer(string)
+            if (param.type == PARAM_INT && !is_integer(request_tok)){
+                printf("type 1\n");
+                return 1; //not matching
+            }
+            //if param type is string but req tok is integer
+            if (param.type == PARAM_STRING && is_integer(request_tok)) {
+                printf("type 2\n");
+                return 1;
+            }
         }
+        else{
+            size_t route_tok_len = strlen(route_tok);
+            size_t request_tok_len = strnlen(request_tok,route_tok_len + 1);// +1 just to give room to be bigger than route_tok
+            if(route_tok_len != request_tok_len){
+                return 1;
+            }
+            if (strncmp(route_tok, request_tok, route_tok_len ) != 0) {
+               return 1;
+            }
+        }
+
         route_tok = strtok_r(NULL,"/",&route_saveptr);
         request_tok = strtok_r(NULL,"/",&req_saveptr);
-        printf("route tok: %s\n", route_tok);
-        printf("req tok: %s\n", request_tok);
     }
-
+    // if any of them arent null it means that one path ended but the other one still had something
+    // so they are not equal
+    if (route_tok != NULL || request_tok != NULL){
+        return 1;
+    }
+    printf("return true \n");
     return 0;
-}
 
+}
