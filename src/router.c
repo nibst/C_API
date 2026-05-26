@@ -32,6 +32,11 @@ void router_init(Router *router){
     router_add_route(router, (Route){POST, "/login", handle_login});
     router_add_route(router, (Route){GET, "/joke", handle_get_joke});
     router_add_route(router, (Route){GET, "/joke/<int:id>", handle_get_joke});
+    router_add_route(router, (Route){PUT, "/joke/<int:id>", handle_update_joke});
+    router_add_route(router, (Route){POST, "/joke", handle_insert_joke});
+    router_add_route(router, (Route){DELETE, "/joke/<int:id>", handle_delete_joke});
+    router_add_route(router, (Route){GET, "/joke/count", handle_joke_count});
+    router_add_route(router, (Route){GET, "/joke/all", handle_get_all_jokes});
 }
 
 void route(Router router, HttpRequest *request, BuffSock *bs) {
@@ -40,8 +45,11 @@ void route(Router router, HttpRequest *request, BuffSock *bs) {
     for (int i = 0; i < router.num_route; i++) {
         printf("request path: %.*s\n",(int) request->path.len, request->path.data);
         printf("route path: %s\n", router.routes[i].path);
-        if (router.routes[i].method == method && route_match(string_init(router.routes[i].path),request->path) == 0) {
+        RouteMatch match;
+        if (router.routes[i].method == method && (match = route_match(string_init(router.routes[i].path),request->path)).matched) {
             printf("handling...\n");
+            memcpy(request->params, match.params, sizeof(PathParam)*match.num_params); 
+            request->num_params = match.num_params;
             router.routes[i].handler(request, bs);
             return;
         }
@@ -78,8 +86,8 @@ int is_integer(const char *s) {
  * param_definition will be something like "<int:id>"
  * request_paramater will be something like "4"
  */
-RouteParam parse_route_param(char* param_definition, char *request_paramater){
-    RouteParam param = {0};
+PathParam parse_route_param(char* param_definition, char *request_paramater){
+    PathParam param = {0};
     char *saveptr, *saveptr2;
     char* tok = strtok_r(param_definition,">",&saveptr);
     tok = strtok_r(tok,"<",&saveptr);
@@ -102,15 +110,19 @@ RouteParam parse_route_param(char* param_definition, char *request_paramater){
     return param;
 
 }
-int route_match(StringView route_path, StringView request_path){
+int get_route_params(PathParam* params, StringView route_path, StringView request_path){
+
+}
+RouteMatch route_match(StringView route_path, StringView request_path){
     char route[256];
     char request[256];
     // TODO make it this memcpy + null pointer safer somehow
     // this chunk of code assumes that route_path and request_path have 255 or less chars. Beware 
     // for now lets just treat request, which is client inputed
+    RouteMatch match = {.matched = 0};
     if (request_path.len > 255){
         perror("Request path too long");
-        return 1;
+        return match;
     }
     memcpy(route,route_path.data,route_path.len);
     memcpy(request, request_path.data,request_path.len);
@@ -120,7 +132,7 @@ int route_match(StringView route_path, StringView request_path){
     char *route_saveptr, *req_saveptr;
     char* route_tok = strtok_r(route,"/",&route_saveptr);
     char* request_tok = strtok_r(request,"/",&req_saveptr);
-    RouteParam param;
+    PathParam param;
     while(route_tok && request_tok){
     fprintf(stderr,"route tok: %s\n", route_tok);
     fprintf(stderr,"req tok: %s,\n", request_tok);
@@ -129,23 +141,22 @@ int route_match(StringView route_path, StringView request_path){
             param = parse_route_param(route_tok, request_tok);
             //if param type is int but req tok is not integer(string)
             if (param.type == PARAM_INT && !is_integer(request_tok)){
-                printf("type 1\n");
-                return 1; //not matching
+                return match; //not matching
             }
             //if param type is string but req tok is integer
             if (param.type == PARAM_STRING && is_integer(request_tok)) {
-                printf("type 2\n");
-                return 1;
+                return match;
             }
+            match.params[match.num_params++] = param;
         }
         else{
             size_t route_tok_len = strlen(route_tok);
             size_t request_tok_len = strnlen(request_tok,route_tok_len + 1);// +1 just to give room to be bigger than route_tok
             if(route_tok_len != request_tok_len){
-                return 1;
+                return match;
             }
             if (strncmp(route_tok, request_tok, route_tok_len ) != 0) {
-               return 1;
+               return match;
             }
         }
 
@@ -155,9 +166,9 @@ int route_match(StringView route_path, StringView request_path){
     // if any of them arent null it means that one path ended but the other one still had something
     // so they are not equal
     if (route_tok != NULL || request_tok != NULL){
-        return 1;
+        return match;
     }
-    printf("return true \n");
-    return 0;
+    match.matched = 1;
+    return match;
 
 }

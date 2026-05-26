@@ -145,7 +145,7 @@ void* handle_connection(void *arg){
         int bytes = parse_request(&buffsock,&request);
         //if any error or connection was closed by client (bytes == 0) -> close tcp connection
         if (bytes < 0){    
-            char * response = http_close_response(400,"Some fucking error idk");
+            char * response = http_close_response(400,"Some fucking error idk", NULL);
             send(connected_sock, response, strlen(response), 0);
             free(response);
             break;

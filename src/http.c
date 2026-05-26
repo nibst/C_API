@@ -69,14 +69,13 @@ enum Method method_from_str(StringView method){
 }
 
 char* http_ok(){
-    return http_response(default_template, 200, "OK");
+    return http_response(default_template, 200, "OK", NULL);
 }
 
 char* http_not_found(){
-    return http_response(default_template, 404, "Not Found"); 
+    return http_response(default_template, 404, "Not Found", NULL); 
 }
-
-char* http_response(const char* response_template, int status, const char* message){
+char* http_response(const char* response_template, int status, const char* message, yyjson_mut_val *data){
     if (response_template == NULL){
         response_template = default_template;
     }
@@ -94,6 +93,7 @@ char* http_response(const char* response_template, int status, const char* messa
 
     yyjson_mut_obj_add_str(doc, root, "status", status_str);
     yyjson_mut_obj_add_str(doc, root, "message", message);
+    yyjson_mut_obj_add_val(doc, root, "data", data);
 
     char *json = yyjson_mut_write(doc, 0, NULL);
 
@@ -119,6 +119,14 @@ char* http_response(const char* response_template, int status, const char* messa
 
     return response;
 }
-char *http_close_response(int status, const char *message){
-    return http_response(close_template, status, message);
+char *http_close_response(int status, const char *message, yyjson_mut_val *data){
+    return http_response(close_template, status, message, data);
+}
+PathParam *get_param(char* name, PathParam* params, size_t num_params){
+    for (int i = 0; i < num_params; i++){
+        if (strcmp(name, params[i].name) == 0){
+            return &params[i];
+        }
+    }
+    return NULL;
 }

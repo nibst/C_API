@@ -1,3 +1,4 @@
+#pragma once
 #include "buffsock.h"
 #include "http.h"
 #define INIT_CAPACITY 8
@@ -13,23 +14,14 @@ typedef struct {
     size_t num_route;
     size_t capacity;
 } Router;
-typedef enum{
-    PARAM_INT,
-    PARAM_STRING,
-    PARAM_UNKNOWN
-}ParamType;
 typedef struct {
-    char name[32];
-    ParamType type;
-    union {
-        int i;
-        char s[128];
-    } value;
-
-} RouteParam;
+    int matched;
+    PathParam params[8];
+    size_t num_params;
+} RouteMatch;
 void route(Router router, HttpRequest *request, BuffSock *bs);
 void router_init(Router *router);
 int router_add_route(Router *router, Route route);
 void router_destroy(Router *router);
-
-int route_match(StringView route_path, StringView request_path);
+RouteMatch route_match(StringView route_path, StringView request_path);
+int get_route_params(PathParam* params, StringView route_path, StringView request_path);
