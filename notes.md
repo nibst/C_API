@@ -18,7 +18,6 @@
 - [ ] for safety change strlens for strnlens (it sets max len)
     This can be done just for client requests. 
     I trust strlen of internal server things
-- [ ] Make endpoints for all joke db CRUD
 - [ ] Make someway of passing request params in HttpRequest struct
 - [ ] For now we have fixed size of route params (max 8), 
     think of another way
@@ -27,8 +26,7 @@
     Then just after I can validate and extract only the parameters 
 - [ ] create a dynamic array module, use on get_all_jokes please
 ## Archive
-
-
+- [x] Make endpoints for all joke db CRUD
 - [x] need to implement resizable buffer for reading socket.
 Better performance on large requests
 - [x] all snake case except types
